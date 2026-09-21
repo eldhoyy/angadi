@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checkout — Angadi</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">Anga<span>di</span></a>
+    <div class="nav-links" style="margin-left:auto">
+      <a href="cart.html" class="cart-pill">🛒 Cart <span id="cartCount">0</span></a>
+      <a href="login.html" id="accountLink">Login</a>
+    </div>
+  </div>
+</nav>
+
+<main class="section wrap" id="root"><p>Loading...</p></main>
+
+<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  const mode = qs("mode") || "delivery";
+  const cart = getCart();
+  const root = document.getElementById("root");
+  let allProducts = [], allShops = [];
+
+  async function init() {
+    if (cart.length === 0) {
+      root.innerHTML = '<div class="empty-state">Your cart is empty. <a href="index.html">Browse products</a></div>';
+      return;
+    }
+    try {
+      [allProducts, allShops] = await Promise.all([getProducts(), getShops()]);
+    } catch (e) {
+      root.innerHTML = '<div class="empty-state">Could not load checkout. Check your Supabase URL/key in js/data.js.</div>';
+      return;
+    }
+
+    if (mode === "pickup") {
+      const firstProduct = findProduct(allProducts, cart[0].productId);
+      const shopId = qs("shop") || (firstProduct ? firstProduct.shop_id : null);
+      const shop = findShop(allShops, shopId) || { name: "Local shop", area: "" };
+      root.innerHTML = `
+        <div class="form-card">
+          <h2>Book for pickup</h2>
+          <p style="text-align:center; color:var(--ink-soft); font-size:0.9rem; margin-bottom:20px">
+            We'll hold these items at the shop. Walk over whenever suits you — no delivery needed.
+          </p>
+          <div class="pd-shopcard">
+            <strong>${shop.name}</strong>
+            <div class="row"><span>${shop.area}</span><span>Nearby</span></div>
+            <div class="map-mini">
+              <div class="dot you-dot" style="left:20px; top:100px;"></div>
+              <div class="dot shop-dot" style="right:20px; top:20px;"></div>
+            </div>
+          </div>
+          <div style="font-family:'Fraunces',serif; font-size:1.2rem; margin:16px 0">Total to pay at shop: ${money(cartTotal(allProducts))}</div>
+          <button class="btn btn-gold" style="width:100%" onclick="placeOrder('pickup')">Confirm booking</button>
+        </div>
+      `;
+    } else {
+      root.innerHTML = `
+        <div class="form-card">
+          <h2>Delivery details</h2>
+          <div class="field"><label>Full name</label><input id="cName" type="text" placeholder="Your name"></div>
+          <div class="field"><label>Phone number</label><input id="cPhone" type="tel" placeholder="+91"></div>
+          <div class="field"><label>Delivery address</label><textarea id="cAddress" placeholder="House name/number, street, locality, city, pincode"></textarea></div>
+          <div class="field"><label>Payment</label>
+            <select id="cPay"><option>Cash on delivery</option><option>UPI</option><option>Card</option></select>
+          </div>
+          <div style="font-family:'Fraunces',serif; font-size:1.2rem; margin:16px 0">Total: ${money(cartTotal(allProducts))}</div>
+          <button class="btn btn-gold" style="width:100%" onclick="placeOrder('delivery')">Place order</button>
+        </div>
+      `;
+    }
+  }
+
+  async function placeOrder(type) {
+    const session = await getSessionProfile();
+    let address = "Pickup at shop";
+    let customerName = session ? session.name : "Guest";
+
+    if (type === "delivery") {
+      customerName = document.getElementById("cName").value.trim();
+      const phone = document.getElementById("cPhone").value.trim();
+      address = document.getElementById("cAddress").value.trim();
+      if (!customerName || !phone || !address) { toast("Fill in all delivery details"); return; }
+    }
+
+    const items = cart.map(c => {
+      const p = findProduct(allProducts, c.productId);
+      return { productId: c.productId, qty: c.qty, price: p ? p.price : 0 };
+    });
+
+    try {
+      const order = await createOrder({
+        customer_id: session ? session.userId : null,
+        type, address, total: cartTotal(allProducts), status: "placed"
+      }, items);
+      saveCart([]);
+      updateCartBadge();
+      if (type === "pickup") {
+        toast("Booking confirmed!");
+        setTimeout(() => window.location.href = "index.html", 900);
+      } else {
+        window.location.href = "track.html?order=" + order.id;
+      }
+    } catch (e) {
+      toast("Could not place order: " + e.message);
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

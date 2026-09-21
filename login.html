@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Angadi</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">Anga<span>di</span></a>
+    <div class="nav-links" style="margin-left:auto"><a href="index.html">Back to shop</a></div>
+  </div>
+</nav>
+
+<main class="section wrap">
+  <div class="form-card">
+    <div class="tabs">
+      <button class="active" data-role="customer" onclick="setRole('customer')">Customer</button>
+      <button data-role="supplier" onclick="setRole('supplier')">Supplier</button>
+      <button data-role="admin" onclick="setRole('admin')">Admin</button>
+    </div>
+    <h2 id="formTitle">Customer login</h2>
+
+    <div id="loginView">
+      <div class="field"><label>Email</label><input type="email" id="lEmail" placeholder="you@example.com"></div>
+      <div class="field"><label>Password</label><input type="password" id="lPass" placeholder="••••••••"></div>
+      <button class="btn btn-gold" style="width:100%" onclick="doLogin()">Log in</button>
+      <p id="switchText" style="text-align:center; font-size:0.85rem; margin-top:14px; color:var(--ink-soft)">
+        New here? <a href="#" onclick="toggleSignup(true); return false;" style="color:var(--terracotta)">Create an account</a>
+      </p>
+    </div>
+
+    <div id="signupView" style="display:none">
+      <div class="field"><label>Full name</label><input type="text" id="sName"></div>
+      <div class="field" id="shopNameField" style="display:none"><label>Shop name</label><input type="text" id="sShopName"></div>
+      <div class="field"><label>Email</label><input type="email" id="sEmail"></div>
+      <div class="field"><label>Password</label><input type="password" id="sPass" placeholder="At least 6 characters"></div>
+      <button class="btn btn-gold" style="width:100%" onclick="doSignup()">Create account</button>
+      <p style="text-align:center; font-size:0.85rem; margin-top:14px; color:var(--ink-soft)">
+        Already have an account? <a href="#" onclick="toggleSignup(false); return false;" style="color:var(--terracotta)">Log in</a>
+      </p>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  let role = "customer";
+  function setRole(r) {
+    role = r;
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.role === r));
+    document.getElementById("formTitle").textContent = r.charAt(0).toUpperCase() + r.slice(1) + " login";
+    document.getElementById("shopNameField").style.display = r === "supplier" ? "block" : "none";
+    toggleSignup(false);
+  }
+  function toggleSignup(show) {
+    document.getElementById("loginView").style.display = show ? "none" : "block";
+    document.getElementById("signupView").style.display = show ? "block" : "none";
+  }
+
+  async function doLogin() {
+    const email = document.getElementById("lEmail").value.trim();
+    const pass = document.getElementById("lPass").value.trim();
+    if (!email || !pass) { toast("Enter email and password"); return; }
+    try {
+      const session = await signIn(email, pass);
+      if (!session || session.role !== role) {
+        toast("That account isn't registered as a " + role + ". Check the tab you're using.");
+        return;
+      }
+      window.location.href = role === "supplier" ? "supplier-dashboard.html"
+                            : role === "admin" ? "admin-dashboard.html" : "index.html";
+    } catch (e) {
+      toast(e.message || "Login failed");
+    }
+  }
+
+  async function doSignup() {
+    const name = document.getElementById("sName").value.trim();
+    const email = document.getElementById("sEmail").value.trim();
+    const pass = document.getElementById("sPass").value.trim();
+    if (!name || !email || !pass) { toast("Fill in all fields"); return; }
+    if (pass.length < 6) { toast("Password needs at least 6 characters"); return; }
+
+    try {
+      const extra = {};
+      if (role === "supplier") extra.shopName = document.getElementById("sShopName").value.trim() || (name + "'s Shop");
+      await signUp(email, pass, name, role, extra);
+      toast("Account created!");
+      setTimeout(() => {
+        window.location.href = role === "supplier" ? "supplier-dashboard.html"
+                              : role === "admin" ? "admin-dashboard.html" : "index.html";
+      }, 700);
+    } catch (e) {
+      toast(e.message || "Could not create account");
+    }
+  }
+
+  setRole("customer");
+</script>
+</body>
+</html>

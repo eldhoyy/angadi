@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supplier dashboard — Angadi</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">Anga<span>di</span></a>
+    <div class="nav-links" style="margin-left:auto">
+      <span id="whoami" style="opacity:0.8"></span>
+      <a href="#" onclick="doLogout(); return false;">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<main class="section wrap">
+  <h2>Supplier dashboard</h2>
+  <p id="shopLabel" style="color:var(--ink-soft); margin-bottom:20px"></p>
+
+  <div class="stat-cards" id="statCards"></div>
+
+  <div class="dash-tabs">
+    <button class="active" data-p="products" onclick="showPanel('products')">My products</button>
+    <button data-p="orders" onclick="showPanel('orders')">Orders</button>
+  </div>
+
+  <div class="dash-panel active" id="panel-products">
+    <button class="btn btn-gold" style="margin-bottom:16px" onclick="openAddModal()">+ Add new product</button>
+    <table class="data-table">
+      <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="productRows"><tr><td colspan="5">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="dash-panel" id="panel-orders">
+    <table class="data-table">
+      <thead><tr><th>Order</th><th>Type</th><th>Total</th><th>Status</th></tr></thead>
+      <tbody id="orderRows"><tr><td colspan="4">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3 id="modalTitle">Add product</h3>
+    <div class="field"><label>Name</label><input id="mName" type="text"></div>
+    <div class="field"><label>Category</label>
+      <select id="mCategory"><option>Groceries</option><option>Bakery</option><option>Household</option><option>Festival</option><option>Pharmacy</option></select>
+    </div>
+    <div class="field"><label>Price (₹)</label><input id="mPrice" type="number"></div>
+    <div class="field"><label>Icon (any emoji)</label><input id="mIcon" type="text" value="🛍️"></div>
+    <div class="field"><label>Status</label>
+      <select id="mStock"><option value="available">Available</option><option value="soldout">Sold out</option><option value="unavailable">Unavailable</option></select>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:16px">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-gold" style="flex:1" onclick="saveProductModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  let session = null;
+  let editingId = null;
+
+  async function init() {
+    session = await requireRole("supplier");
+    if (!session) return;
+    document.getElementById("whoami").textContent = session.name;
+    const shops = await getShops();
+    const shop = findShop(shops, session.shopId);
+    document.getElementById("shopLabel").textContent = shop ? shop.name + " · " + shop.area : "";
+    await renderAll();
+  }
+
+  async function renderAll() {
+    const products = await getProducts({ shopId: session.shopId });
+    const allOrders = await getOrders();
+    const myOrders = allOrders.filter(o => o.order_items.some(it => products.some(p => p.id === it.product_id)));
+
+    document.getElementById("statCards").innerHTML = `
+      <div class="stat-card"><div class="n">${products.length}</div><div class="l">Products listed</div></div>
+      <div class="stat-card"><div class="n">${products.filter(p=>p.stock==='available').length}</div><div class="l">In stock</div></div>
+      <div class="stat-card"><div class="n">${myOrders.length}</div><div class="l">Orders received</div></div>
+    `;
+
+    document.getElementById("productRows").innerHTML = products.map(p => `
+      <tr>
+        <td>${p.icon} ${p.name}</td>
+        <td>${p.category}</td>
+        <td>${money(p.price)}</td>
+        <td>
+          <select onchange="quickStatus('${p.id}', this.value)">
+            <option value="available" ${p.stock==='available'?'selected':''}>Available</option>
+            <option value="soldout" ${p.stock==='soldout'?'selected':''}>Sold out</option>
+            <option value="unavailable" ${p.stock==='unavailable'?'selected':''}>Unavailable</option>
+          </select>
+        </td>
+        <td class="actions">
+          <button class="btn btn-sm btn-outline" onclick='openEditModal(${JSON.stringify(p)})'>Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteThisProduct('${p.id}')">Delete</button>
+        </td>
+      </tr>
+    `).join("") || `<tr><td colspan="5" style="color:var(--ink-soft)">No products yet — add your first one.</td></tr>`;
+
+    document.getElementById("orderRows").innerHTML = myOrders.map(o => `
+      <tr><td>#${o.id.slice(-6).toUpperCase()}</td><td>${o.type}</td><td>${money(o.total)}</td><td>${o.status}</td></tr>
+    `).join("") || `<tr><td colspan="4" style="color:var(--ink-soft)">No orders yet.</td></tr>`;
+  }
+
+  async function quickStatus(id, status) {
+    try { await updateProduct(id, { stock: status }); toast("Status updated"); await renderAll(); }
+    catch (e) { toast("Could not update: " + e.message); }
+  }
+
+  async function deleteThisProduct(id) {
+    if (!confirm("Remove this product from your shop listing?")) return;
+    try { await deleteProduct(id); toast("Product removed"); await renderAll(); }
+    catch (e) { toast("Could not delete: " + e.message); }
+  }
+
+  function openAddModal() {
+    editingId = null;
+    document.getElementById("modalTitle").textContent = "Add product";
+    document.getElementById("mName").value = "";
+    document.getElementById("mCategory").value = "Groceries";
+    document.getElementById("mPrice").value = "";
+    document.getElementById("mIcon").value = "🛍️";
+    document.getElementById("mStock").value = "available";
+    document.getElementById("modalBg").classList.add("open");
+  }
+  function openEditModal(p) {
+    editingId = p.id;
+    document.getElementById("modalTitle").textContent = "Edit product";
+    document.getElementById("mName").value = p.name;
+    document.getElementById("mCategory").value = p.category;
+    document.getElementById("mPrice").value = p.price;
+    document.getElementById("mIcon").value = p.icon;
+    document.getElementById("mStock").value = p.stock;
+    document.getElementById("modalBg").classList.add("open");
+  }
+  function closeModal() { document.getElementById("modalBg").classList.remove("open"); }
+
+  async function saveProductModal() {
+    const name = document.getElementById("mName").value.trim();
+    const price = parseFloat(document.getElementById("mPrice").value);
+    if (!name || !price) { toast("Enter a name and price"); return; }
+    const payload = {
+      name, category: document.getElementById("mCategory").value, price,
+      icon: document.getElementById("mIcon").value || "🛍️",
+      stock: document.getElementById("mStock").value
+    };
+    try {
+      if (editingId) await updateProduct(editingId, payload);
+      else await createProduct({ ...payload, shop_id: session.shopId, rating: 0, review_count: 0 });
+      closeModal();
+      toast("Saved");
+      await renderAll();
+    } catch (e) {
+      toast("Could not save: " + e.message);
+    }
+  }
+
+  function showPanel(name) {
+    document.querySelectorAll(".dash-tabs button").forEach(b => b.classList.toggle("active", b.dataset.p === name));
+    document.querySelectorAll(".dash-panel").forEach(p => p.classList.remove("active"));
+    document.getElementById("panel-" + name).classList.add("active");
+  }
+
+  async function doLogout() { await logout(); }
+
+  init();
+</script>
+</body>
+</html>

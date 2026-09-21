@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product — Angadi</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">Anga<span>di</span></a>
+    <form class="search-box" id="navSearchForm">
+      <input type="text" id="navSearchInput" placeholder="Search for products...">
+      <button type="submit">Search</button>
+    </form>
+    <div class="nav-links">
+      <a href="cart.html" class="cart-pill">🛒 Cart <span id="cartCount">0</span></a>
+      <a href="track.html" class="hide-sm">Track order</a>
+      <a href="login.html" id="accountLink">Login</a>
+    </div>
+  </div>
+</nav>
+
+<main class="section wrap" id="pdRoot"><p>Loading...</p></main>
+
+<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  const id = qs("id");
+  const root = document.getElementById("pdRoot");
+  let product = null, shop = null, qty = 1, selectedRating = 0, mediaFile = null, mediaDataUrl = null;
+
+  async function init() {
+    let products, shops;
+    try {
+      products = await getProducts();
+      shops = await getShops();
+    } catch (e) {
+      root.innerHTML = '<div class="empty-state">Could not load this product. Check your Supabase URL/key in js/data.js.</div>';
+      return;
+    }
+    product = findProduct(products, id);
+    if (!product) {
+      root.innerHTML = '<div class="empty-state">Product not found. <a href="index.html">Back to home</a></div>';
+      return;
+    }
+    shop = findShop(shops, product.shop_id) || { name: "Local shop", area: "" };
+    renderProduct();
+    await renderReviews();
+  }
+
+  function renderProduct() {
+    const disabled = product.stock !== "available";
+    root.innerHTML = `
+      <div class="breadcrumb"><a href="index.html">Home</a> / ${product.category} / ${product.name}</div>
+      <div class="pd-layout">
+        <div><div class="pd-img">${product.icon}</div></div>
+        <div>
+          ${stockBadge(product.stock)}
+          <h1 style="margin-top:8px">${product.name}</h1>
+          <div class="pstars">${stars(product.rating)} <span style="color:var(--ink-soft)">${product.rating} · ${product.review_count || 0} reviews</span></div>
+          <div class="pd-price">${money(product.price)}</div>
+          <div class="qty-row">
+            <button onclick="changeQty(-1)">−</button>
+            <span id="qtyVal">1</span>
+            <button onclick="changeQty(1)">+</button>
+          </div>
+          <div class="pd-actions">
+            <button class="btn btn-outline" ${disabled ? "disabled":""} onclick="doAddToCart()">Add to cart</button>
+            <button class="btn btn-gold" ${disabled ? "disabled":""} onclick="doBuyNow()">Buy now — delivered</button>
+            <button class="btn btn-dark" ${disabled ? "disabled":""} onclick="doBook()">Book — I'll pick it up</button>
+          </div>
+          ${disabled ? '<p style="color:var(--ink-soft);font-size:0.85rem">This item is currently unavailable at this shop.</p>' : ""}
+          <div class="pd-shopcard">
+            <strong>${shop.name}</strong>
+            <div class="row"><span>${shop.area}</span><span>Nearby</span></div>
+            <div class="map-mini">
+              <div class="dot you-dot" style="left:20px; top:100px;" title="You"></div>
+              <div class="dot shop-dot" style="right:20px; top:20px;" title="${shop.name}"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <section class="section" style="padding-top:8px">
+        <h2>Reviews &amp; photos from buyers</h2>
+        <div id="reviewList">Loading reviews...</div>
+        <div class="form-card" style="margin-top:24px; max-width:520px">
+          <h4>Write a review</h4>
+          <div class="field">
+            <label>Your rating</label>
+            <div class="star-input" id="starInput">
+              <span data-v="1">★</span><span data-v="2">★</span><span data-v="3">★</span><span data-v="4">★</span><span data-v="5">★</span>
+            </div>
+          </div>
+          <div class="field"><label>Your name</label><input type="text" id="revName" placeholder="e.g. Anjali R."></div>
+          <div class="field"><label>Comment</label><textarea id="revComment" placeholder="How was the product and delivery?"></textarea></div>
+          <div class="field">
+            <label>Add a photo or video (optional)</label>
+            <input type="file" id="revMedia" accept="image/*,video/*">
+            <div id="mediaPreview" style="margin-top:8px"></div>
+          </div>
+          <button class="btn btn-gold" style="width:100%" onclick="submitReview()">Submit review</button>
+          <p style="font-size:0.78rem;color:var(--ink-soft);margin-top:8px">You'll need to be logged in as a customer to post a review.</p>
+        </div>
+      </section>
+    `;
+    document.getElementById("starInput").addEventListener("click", function (e) {
+      if (e.target.dataset.v) {
+        selectedRating = parseInt(e.target.dataset.v);
+        [...this.children].forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= selectedRating));
+      }
+    });
+    document.getElementById("revMedia").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      mediaFile = file;
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        mediaDataUrl = ev.target.result;
+        const isVideo = file.type.startsWith("video");
+        document.getElementById("mediaPreview").innerHTML = isVideo
+          ? `<div class="thumb"><video src="${mediaDataUrl}" muted></video></div>`
+          : `<div class="thumb"><img src="${mediaDataUrl}"></div>`;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function changeQty(d) { qty = Math.max(1, qty + d); document.getElementById("qtyVal").textContent = qty; }
+  function doAddToCart() { addToCart(product.id, qty); toast("Added " + qty + " to cart"); }
+  function doBuyNow() { addToCart(product.id, qty); window.location.href = "checkout.html?mode=delivery"; }
+  function doBook() { addToCart(product.id, qty); window.location.href = "checkout.html?mode=pickup&shop=" + product.shop_id; }
+
+  async function renderReviews() {
+    let list = [];
+    try { list = await getReviews(id); } catch (e) { list = []; }
+    const el = document.getElementById("reviewList");
+    if (list.length === 0) { el.innerHTML = '<p style="color:var(--ink-soft)">No reviews yet — be the first to share one.</p>'; return; }
+    el.innerHTML = list.map(r => `
+      <div class="review">
+        <div class="rmeta"><span><strong>${r.customer_name}</strong> <span class="stars">${stars(r.rating)}</span></span><span>${new Date(r.created_at).toLocaleDateString()}</span></div>
+        <p>${r.comment || ""}</p>
+        ${r.media_url ? `<div class="review-media"><div class="thumb">${/\.(mp4|webm|mov)$/i.test(r.media_url) ? `<video src="${r.media_url}" muted></video>` : `<img src="${r.media_url}">`}</div></div>` : ""}
+      </div>
+    `).join("");
+  }
+
+  async function submitReview() {
+    const name = document.getElementById("revName").value.trim();
+    const comment = document.getElementById("revComment").value.trim();
+    if (!name || !comment || !selectedRating) { toast("Add a name, rating and comment first"); return; }
+
+    const session = await getSessionProfile();
+    if (!session) { toast("Log in as a customer first to post a review"); return; }
+
+    try {
+      let mediaUrl = null;
+      if (mediaFile) mediaUrl = await uploadReviewMedia(mediaFile);
+      await addReview({
+        product_id: id, customer_id: session.userId, customer_name: name,
+        rating: selectedRating, comment, media_url: mediaUrl
+      });
+      toast("Review posted — thank you!");
+      document.getElementById("revName").value = "";
+      document.getElementById("revComment").value = "";
+      document.getElementById("mediaPreview").innerHTML = "";
+      selectedRating = 0; mediaFile = null;
+      [...document.getElementById("starInput").children].forEach(s => s.classList.remove("active"));
+      await renderReviews();
+    } catch (e) {
+      toast("Couldn't post review: " + e.message);
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

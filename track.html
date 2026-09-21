@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Track your order — Angadi</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">Anga<span>di</span></a>
+    <div class="nav-links" style="margin-left:auto">
+      <a href="cart.html" class="cart-pill">🛒 Cart <span id="cartCount">0</span></a>
+      <a href="login.html" id="accountLink">Login</a>
+    </div>
+  </div>
+</nav>
+
+<main class="section wrap" id="root" style="max-width:640px; margin:0 auto"><p>Loading...</p></main>
+
+<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  const orderId = qs("order");
+  const root = document.getElementById("root");
+  const STATUS_STEPS = ["placed", "packed", "out_for_delivery", "delivered"];
+  const STATUS_LABEL = {
+    placed: "Order placed",
+    packed: "Packed at the shop",
+    out_for_delivery: "Rider picked up, on the way",
+    delivered: "Delivered"
+  };
+
+  async function init() {
+    if (!orderId) {
+      root.innerHTML = '<div class="empty-state">No order to track. <a href="index.html">Browse products</a></div>';
+      return;
+    }
+    let order, allProducts, allShops;
+    try {
+      order = await getOrderById(orderId);
+      [allProducts, allShops] = await Promise.all([getProducts(), getShops()]);
+    } catch (e) {
+      root.innerHTML = '<div class="empty-state">Could not load this order. Check your Supabase URL/key in js/data.js.</div>';
+      return;
+    }
+    const firstItem = order.order_items[0];
+    const product = firstItem ? findProduct(allProducts, firstItem.product_id) : null;
+    const shop = product ? findShop(allShops, product.shop_id) : null;
+
+    root.innerHTML = `
+      <h2>Order #${order.id.slice(-6).toUpperCase()}</h2>
+      <p style="color:var(--ink-soft); margin-bottom:20px">${shop ? "From " + shop.name + " · " : ""}${money(order.total)} · ${order.address}</p>
+      <div class="track-map" id="trackMap">
+        <div class="pin" style="left:24px; top:100px;">🏪</div>
+        <div class="pin" style="right:20px; top:20px;">🏠</div>
+        <div class="rider" id="rider" style="left:24px; top:100px;"></div>
+      </div>
+      <ul class="track-steps" id="steps">
+        <li id="step-placed">${STATUS_LABEL.placed}</li>
+        <li id="step-packed">${STATUS_LABEL.packed}</li>
+        <li id="step-out_for_delivery">${STATUS_LABEL.out_for_delivery}</li>
+        <li id="step-delivered">${STATUS_LABEL.delivered}</li>
+      </ul>
+      <p id="etaText" style="color:var(--ink-soft); font-size:0.9rem"></p>
+      <p style="font-size:0.78rem; color:var(--ink-soft)">Status updates live once the shop or admin marks progress — no need to refresh this page.</p>
+    `;
+
+    applyStatus(order.status);
+    moveRiderFor(order.status);
+
+    // Live updates: when the supplier/admin changes order.status in the DB,
+    // this page updates automatically via Supabase Realtime.
+    subscribeToOrder(order.id, updatedOrder => {
+      applyStatus(updatedOrder.status);
+      moveRiderFor(updatedOrder.status);
+    });
+  }
+
+  function applyStatus(status) {
+    const idx = STATUS_STEPS.indexOf(status);
+    STATUS_STEPS.forEach((s, i) => {
+      const el = document.getElementById("step-" + s);
+      el.classList.remove("done", "current");
+      if (i < idx) el.classList.add("done");
+      if (i === idx) el.classList.add("current");
+    });
+    document.getElementById("etaText").textContent =
+      status === "placed" ? "Order confirmed — shop is preparing it."
+      : status === "packed" ? "Packed and ready — waiting for a rider."
+      : status === "out_for_delivery" ? "On the way to you."
+      : "Delivered! Enjoy.";
+  }
+
+  function moveRiderFor(status) {
+    const rider = document.getElementById("rider");
+    const idx = Math.max(0, STATUS_STEPS.indexOf(status));
+    const positions = [{left:24,top:100},{left:120,top:70},{left:230,top:40},{left:340,top:20}];
+    const pos = positions[idx];
+    rider.style.left = pos.left + "px";
+    rider.style.top = pos.top + "px";
+  }
+
+  init();
+</script>
+</body>
+</html>

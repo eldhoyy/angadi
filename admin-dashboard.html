@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin dashboard — Angadi</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">Anga<span>di</span> <span style="font-size:0.7rem; opacity:0.7">admin</span></a>
+    <div class="nav-links" style="margin-left:auto">
+      <a href="#" onclick="doLogout(); return false;">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<main class="section wrap">
+  <h2>Admin dashboard</h2>
+  <div class="stat-cards" id="statCards"></div>
+
+  <div class="dash-tabs">
+    <button class="active" data-p="products" onclick="showPanel('products')">Products</button>
+    <button data-p="suppliers" onclick="showPanel('suppliers')">Suppliers</button>
+    <button data-p="customers" onclick="showPanel('customers')">Customers</button>
+    <button data-p="orders" onclick="showPanel('orders')">Orders</button>
+  </div>
+
+  <div class="dash-panel active" id="panel-products">
+    <table class="data-table">
+      <thead><tr><th>Product</th><th>Shop</th><th>Category</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="productRows"><tr><td colspan="6">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="dash-panel" id="panel-suppliers">
+    <p style="color:var(--ink-soft); font-size:0.85rem; margin-bottom:12px">Removing a shop also removes all of its products. Removing the supplier's login itself needs a privileged server step — see README.</p>
+    <table class="data-table">
+      <thead><tr><th>Shop name</th><th>Owner</th><th>Area</th><th>Actions</th></tr></thead>
+      <tbody id="supplierRows"><tr><td colspan="4">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="dash-panel" id="panel-customers">
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Joined</th></tr></thead>
+      <tbody id="customerRows"><tr><td colspan="2">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="dash-panel" id="panel-orders">
+    <table class="data-table">
+      <thead><tr><th>Order</th><th>Type</th><th>Total</th><th>Status</th></tr></thead>
+      <tbody id="orderRows"><tr><td colspan="4">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  let session = null;
+
+  async function init() {
+    session = await requireRole("admin");
+    if (!session) return;
+    await renderAll();
+  }
+
+  async function renderAll() {
+    const [products, shops, suppliers, customers, orders] = await Promise.all([
+      getProducts(), getShops(), getProfiles("supplier"), getProfiles("customer"), getOrders()
+    ]);
+
+    document.getElementById("statCards").innerHTML = `
+      <div class="stat-card"><div class="n">${products.length}</div><div class="l">Products</div></div>
+      <div class="stat-card"><div class="n">${shops.length}</div><div class="l">Shops</div></div>
+      <div class="stat-card"><div class="n">${customers.length}</div><div class="l">Customers</div></div>
+      <div class="stat-card"><div class="n">${orders.length}</div><div class="l">Orders</div></div>
+    `;
+
+    document.getElementById("productRows").innerHTML = products.map(p => {
+      const shop = findShop(shops, p.shop_id);
+      return `<tr>
+        <td>${p.icon} ${p.name}</td>
+        <td>${shop ? shop.name : "—"}</td>
+        <td>${p.category}</td>
+        <td>${money(p.price)}</td>
+        <td>${stockBadge(p.stock)}</td>
+        <td class="actions"><button class="btn btn-sm btn-danger" onclick="deleteThisProduct('${p.id}')">Delete</button></td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="6" style="color:var(--ink-soft)">No products.</td></tr>`;
+
+    document.getElementById("supplierRows").innerHTML = shops.map(s => {
+      const owner = suppliers.find(su => su.id === s.supplier_id);
+      return `<tr>
+        <td>${s.name}</td><td>${owner ? owner.name : "—"}</td><td>${s.area}</td>
+        <td class="actions"><button class="btn btn-sm btn-danger" onclick="deleteThisShop('${s.id}')">Remove shop</button></td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="4" style="color:var(--ink-soft)">No suppliers yet.</td></tr>`;
+
+    document.getElementById("customerRows").innerHTML = customers.map(c => `
+      <tr><td>${c.name}</td><td>${new Date(c.created_at).toLocaleDateString()}</td></tr>
+    `).join("") || `<tr><td colspan="2" style="color:var(--ink-soft)">No registered customers yet (guest checkouts aren't listed here).</td></tr>`;
+
+    document.getElementById("orderRows").innerHTML = orders.map(o => `
+      <tr>
+        <td>#${o.id.slice(-6).toUpperCase()}</td><td>${o.type}</td><td>${money(o.total)}</td>
+        <td>
+          <select onchange="changeOrderStatus('${o.id}', this.value)">
+            <option value="placed" ${o.status==='placed'?'selected':''}>Placed</option>
+            <option value="packed" ${o.status==='packed'?'selected':''}>Packed</option>
+            <option value="out_for_delivery" ${o.status==='out_for_delivery'?'selected':''}>Out for delivery</option>
+            <option value="delivered" ${o.status==='delivered'?'selected':''}>Delivered</option>
+          </select>
+        </td>
+      </tr>
+    `).join("") || `<tr><td colspan="4" style="color:var(--ink-soft)">No orders yet.</td></tr>`;
+  }
+
+  async function deleteThisProduct(id) {
+    if (!confirm("Remove this product?")) return;
+    try { await deleteProduct(id); toast("Removed"); await renderAll(); }
+    catch (e) { toast("Could not delete: " + e.message); }
+  }
+  async function deleteThisShop(id) {
+    if (!confirm("Remove this shop and all of its products?")) return;
+    try { await deleteShop(id); toast("Shop removed"); await renderAll(); }
+    catch (e) { toast("Could not delete: " + e.message); }
+  }
+  async function changeOrderStatus(id, status) {
+    try { await updateOrderStatus(id, status); toast("Order status updated"); }
+    catch (e) { toast("Could not update: " + e.message); }
+  }
+
+  function showPanel(name) {
+    document.querySelectorAll(".dash-tabs button").forEach(b => b.classList.toggle("active", b.dataset.p === name));
+    document.querySelectorAll(".dash-panel").forEach(p => p.classList.remove("active"));
+    document.getElementById("panel-" + name).classList.add("active");
+  }
+
+  async function doLogout() { await logout(); }
+
+  init();
+</script>
+</body>
+</html>

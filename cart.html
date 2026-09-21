@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your cart — Angadi</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">Anga<span>di</span></a>
+    <form class="search-box" id="navSearchForm">
+      <input type="text" id="navSearchInput" placeholder="Search for products...">
+      <button type="submit">Search</button>
+    </form>
+    <div class="nav-links">
+      <a href="cart.html" class="cart-pill">🛒 Cart <span id="cartCount">0</span></a>
+      <a href="track.html" class="hide-sm">Track order</a>
+      <a href="login.html" id="accountLink">Login</a>
+    </div>
+  </div>
+</nav>
+
+<main class="section wrap">
+  <h2>Your cart</h2>
+  <div id="cartRoot"><p>Loading...</p></div>
+</main>
+
+<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  let allProducts = [];
+
+  async function render() {
+    const cart = getCart();
+    const root = document.getElementById("cartRoot");
+    if (cart.length === 0) {
+      root.innerHTML = '<div class="empty-state">Your cart is empty. <a href="index.html">Browse products</a></div>';
+      return;
+    }
+    try {
+      allProducts = await getProducts();
+    } catch (e) {
+      root.innerHTML = '<div class="empty-state">Could not load your cart. Check your Supabase URL/key in js/data.js.</div>';
+      return;
+    }
+
+    const rows = cart.map(c => {
+      const p = findProduct(allProducts, c.productId);
+      if (!p) return "";
+      return `
+      <tr>
+        <td>${p.icon} ${p.name}</td>
+        <td>${money(p.price)}</td>
+        <td>
+          <div class="qty-row" style="margin:0">
+            <button onclick="updateQty('${p.id}', ${c.qty - 1})">−</button>
+            <span>${c.qty}</span>
+            <button onclick="updateQty('${p.id}', ${c.qty + 1})">+</button>
+          </div>
+        </td>
+        <td>${money(p.price * c.qty)}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="removeItem('${p.id}')">Remove</button></td>
+      </tr>`;
+    }).join("");
+
+    root.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Subtotal</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:flex; justify-content:flex-end; margin-top:22px; gap:24px; align-items:center">
+        <div style="font-family:'Fraunces',serif; font-size:1.3rem">Total: ${money(cartTotal(allProducts))}</div>
+        <a href="checkout.html?mode=delivery" class="btn btn-gold">Proceed to checkout</a>
+      </div>
+    `;
+  }
+  function updateQty(id, qty) {
+    if (qty < 1) { removeItem(id); return; }
+    setCartQty(id, qty);
+    render();
+  }
+  function removeItem(id) { removeFromCart(id); render(); toast("Removed from cart"); }
+  render();
+</script>
+</body>
+</html>
