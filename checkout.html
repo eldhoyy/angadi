@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Checkout — Angadi</title>
+<title>Checkout — NIRVA</title>
+<link rel="icon" href="img/nirva-logo.png" type="image/png">
 <link rel="stylesheet" href="css/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -11,7 +12,7 @@
 
 <nav class="topnav">
   <div class="wrap">
-    <a class="brand" href="index.html">Anga<span>di</span></a>
+    <a class="brand" href="index.html"><img src="img/nirva-logo.png" alt="NIRVA" class="brand-logo"> NIRVA</a>
     <div class="nav-links" style="margin-left:auto">
       <a href="cart.html" class="cart-pill">🛒 Cart <span id="cartCount">0</span></a>
       <a href="login.html" id="accountLink">Login</a>
@@ -21,7 +22,7 @@
 
 <main class="section wrap" id="root"><p>Loading...</p></main>
 
-<footer><div class="wrap">Angadi — an early-stage local-commerce idea.</div></footer>
+<footer><div class="wrap">NIRVA — an early-stage local-commerce idea.</div></footer>
 
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>
@@ -73,7 +74,7 @@
           <div class="field"><label>Phone number</label><input id="cPhone" type="tel" placeholder="+91"></div>
           <div class="field"><label>Delivery address</label><textarea id="cAddress" placeholder="House name/number, street, locality, city, pincode"></textarea></div>
           <div class="field"><label>Payment</label>
-            <select id="cPay"><option>Cash on delivery</option><option>UPI</option><option>Card</option></select>
+            <div style="padding:10px 12px; border:1px solid var(--line); border-radius:3px; background:var(--paper-2); font-size:0.9rem;">💵 Cash on delivery</div>
           </div>
           <div style="font-family:'Fraunces',serif; font-size:1.2rem; margin:16px 0">Total: ${money(cartTotal(allProducts))}</div>
           <button class="btn btn-gold" style="width:100%" onclick="placeOrder('delivery')">Place order</button>

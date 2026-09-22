@@ -1,4 +1,4 @@
-# Angadi — local shops, delivered
+# NIRVA — local shops, delivered
 
 A working prototype: customers browse and search live stock across nearby shops,
 buy for delivery or book for pickup, track orders, and leave reviews with
@@ -48,7 +48,7 @@ leave Build Command / Output Directory blank → Deploy.
 branch `main`, folder `/ (root)`.
 
 Either way, once deployed, go back to Supabase → Authentication → URL
-Configuration and add your live URL (e.g. `https://angadi.vercel.app`) as an
+Configuration and add your live URL (e.g. `https://nirva.vercel.app`) as an
 allowed redirect URL.
 
 ## Making the first admin account
